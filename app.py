@@ -4,6 +4,9 @@ import csv
 import copy
 import argparse
 import itertools
+import json
+import string
+import websocket
 from collections import Counter
 from collections import deque
 
@@ -14,6 +17,12 @@ import mediapipe as mp
 from utils import CvFpsCalc
 from model import KeyPointClassifier
 from model import PointHistoryClassifier
+
+websocket.enableTrace(True)
+ws = websocket.WebSocket()
+ws.connect("ws://echo.websocket.events", cookie="chocolate",
+  origin="testing_websockets-client.com", host="echo.websocket.events")
+
 
 
 def get_args():
@@ -58,7 +67,7 @@ def main():
     cap.set(cv.CAP_PROP_FRAME_HEIGHT, cap_height)
 
     # Model load #############################################################
-    mp_hands = mp.solutions.hands
+    mp_hands = mp.solutions.hands 
     hands = mp_hands.Hands(
         static_image_mode=use_static_image_mode,
         max_num_hands=1,
@@ -98,12 +107,15 @@ def main():
     #  ########################################################################
     mode = 0
 
+   
+
     while True:
         fps = cvFpsCalc.get()
 
         # Process Key (ESC: end) #################################################
         key = cv.waitKey(10)
         if key == 27:  # ESC
+            ws.close()
             break
         number, mode = select_mode(key, mode)
 
@@ -168,6 +180,7 @@ def main():
                     keypoint_classifier_labels[hand_sign_id],
                     point_history_classifier_labels[most_common_fg_id[0][0]],
                 )
+
         else:
             point_history.append([0, 0])
 
@@ -243,6 +256,7 @@ def pre_process_landmark(landmark_list):
     # Convert to a one-dimensional list
     temp_landmark_list = list(
         itertools.chain.from_iterable(temp_landmark_list))
+    
 
     # Normalization
     max_value = max(list(map(abs, temp_landmark_list)))
@@ -491,14 +505,29 @@ def draw_bounding_rect(use_brect, image, brect):
     return image
 
 
+def gesture_info(gesture):
+    
+    """
+    gesture_info(gestures) -> None
+    @param gesture: string that holds gesture
+    """
+    gestureCommands = {'currentCommand': ''}
+    gestureCommands.update({'currentCommand': gesture})
+    jsonGestureCommand = json.dumps(gestureCommands)
+    ws.send(jsonGestureCommand)
+    ws.recv()
+
 def draw_info_text(image, brect, handedness, hand_sign_text,
                    finger_gesture_text):
+    gestureCommands = {'currentCommand': ''}
     cv.rectangle(image, (brect[0], brect[1]), (brect[2], brect[1] - 22),
                  (0, 0, 0), -1)
 
     info_text = handedness.classification[0].label[0:]
     if hand_sign_text != "":
         info_text = info_text + ':' + hand_sign_text
+        gesture_info(hand_sign_text)
+        
     cv.putText(image, info_text, (brect[0] + 5, brect[1] - 4),
                cv.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1, cv.LINE_AA)
 
